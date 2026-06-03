@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tâches Équipe</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e5e5;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    header span { font-size: 13px; color: #888; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+
+    /* ── ADD TASK FORM ── */
+    .add-form {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .add-form h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #555; text-transform: uppercase; letter-spacing: .5px; }
+    .form-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .form-row input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 14px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .form-row input[type="text"]:focus { border-color: #6366f1; }
+    .form-row select {
+      padding: 10px 14px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fff;
+      outline: none;
+      cursor: pointer;
+    }
+    .btn-add {
+      padding: 10px 20px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .btn-add:hover { background: #4f51d8; }
+
+    /* ── FILTERS ── */
+    .filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 7px 16px;
+      border-radius: 20px;
+      border: 1.5px solid #e0e0e0;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      color: #555;
+    }
+    .filter-btn:hover { border-color: #6366f1; color: #6366f1; }
+    .filter-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+
+    /* ── COLUMNS ── */
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 640px) { .board { grid-template-columns: 1fr; } }
+
+    .column {
+      background: #fff;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .column-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .col-todo .column-title   { color: #6b7280; }
+    .col-doing .column-title  { color: #f59e0b; }
+    .col-done .column-title   { color: #10b981; }
+
+    .col-count {
+      font-size: 12px;
+      background: #f3f4f6;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-weight: 600;
+      color: #6b7280;
+    }
+
+    /* ── TASK CARD ── */
+    .task-card {
+      border: 1.5px solid #f0f0f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: default;
+      transition: border-color .15s, box-shadow .15s;
+      position: relative;
+    }
+    .task-card:hover { border-color: #d0d0d0; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+
+    .task-title { font-size: 14px; font-weight: 500; margin-bottom: 8px; line-height: 1.4; }
+    .col-done .task-title { text-decoration: line-through; color: #9ca3af; }
+
+    .task-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .assignee-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 10px;
+      letter-spacing: .3px;
+    }
+
+    /* couleurs par personne */
+    .badge-laurent  { background: #ede9fe; color: #6d28d9; }
+    .badge-nathalie { background: #fce7f3; color: #be185d; }
+    .badge-sabrina  { background: #d1fae5; color: #065f46; }
+    .badge-rahman   { background: #fef3c7; color: #92400e; }
+
+    .task-actions { display: flex; gap: 4px; }
+    .btn-move {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1.5px solid #e0e0e0;
+      background: #fff;
+      cursor: pointer;
+      color: #555;
+      transition: all .12s;
+      white-space: nowrap;
+    }
+    .btn-move:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-delete {
+      font-size: 13px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: #d1d5db;
+      transition: color .12s;
+    }
+    .btn-delete:hover { color: #ef4444; }
+
+    /* ── EMPTY STATE ── */
+    .empty { text-align: center; color: #d1d5db; font-size: 13px; padding: 20px 0; }
+
+    /* ── CONFIG BANNER ── */
+    .config-banner {
+      background: #fef3c7;
+      border: 1.5px solid #fcd34d;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .config-banner strong { color: #92400e; }
+    .config-banner code {
+      background: #fff;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      border: 1px solid #fcd34d;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Tâches Équipe</h1>
+  <span id="task-count">—</span>
+</header>
+
+<div class="container">
+
+  <!-- Banner affiché tant que Supabase n'est pas configuré -->
+  <div class="config-banner" id="config-banner">
+    <strong>⚙️ Configuration requise</strong><br>
+    Ouvre ce fichier dans un éditeur de texte (TextEdit ou VS Code), trouve les deux lignes
+    <code>SUPABASE_URL</code> et <code>SUPABASE_KEY</code> tout en bas du fichier et remplace-les par
+    tes vraies valeurs Supabase. On fait ça ensemble étape par étape.
+  </div>
+
+  <!-- Formulaire d'ajout -->
+  <div class="add-form">
+    <h2>Nouvelle tâche</h2>
+    <div class="form-row">
+      <input type="text" id="task-input" placeholder="Description de la tâche…" />
+      <select id="assignee-select">
+        <option value="Laurent">Laurent</option>
+        <option value="Nathalie">Nathalie</option>
+        <option value="Sabrina">Sabrina</option>
+        <option value="Rahman">Rahman</option>
+      </select>
+      <button class="btn-add" onclick="addTask()">+ Ajouter</button>
+    </div>
+  </div>
+
+  <!-- Filtres par personne -->
+  <div class="filters">
+    <button class="filter-btn active" onclick="setFilter('Tous')">Tous</button>
+    <button class="filter-btn" onclick="setFilter('Laurent')">Laurent</button>
+    <button class="filter-btn" onclick="setFilter('Nathalie')">Nathalie</button>
+    <button class="filter-btn" onclick="setFilter('Sabrina')">Sabrina</button>
+    <button class="filter-btn" onclick="setFilter('Rahman')">Rahman</button>
+  </div>
+
+  <!-- Tableau kanban -->
+  <div class="board">
+    <div class="column col-todo">
+      <div class="column-header">
+        <span class="column-title">À faire</span>
+        <span class="col-count" id="count-todo">0</span>
+      </div>
+      <div id="col-todo"></div>
+    </div>
+    <div class="column col-doing">
+      <div class="column-header">
+        <span class="column-title">En cours</span>
+        <span class="col-count" id="count-doing">0</span>
+      </div>
+      <div id="col-doing"></div>
+    </div>
+    <div class="column col-done">
+      <div class="column-header">
+        <span class="column-title">Fait ✓</span>
+        <span class="col-count" id="count-done">0</span>
+      </div>
+      <div id="col-done"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ─────────────────────────────────────────────
+  //  CONFIGURATION SUPABASE  ← modifier ici
+  // ─────────────────────────────────────────────
+  const SUPABASE_URL = 'https://vielqmjcextlynqvssoo.supabase.co'
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpZWxxbWpjZXh0bHlucXZzc29vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDQwMzAsImV4cCI6MjA5NjA4MDAzMH0.arNbiVgnJ9OHZOr0GjWFUQrXazKCnK8vA252_Sa2yQk'
+  // ─────────────────────────────────────────────
+
+  const STATUSES = ['todo', 'doing', 'done']
+  const STATUS_LABELS = { todo: 'À faire', doing: 'En cours', done: 'Fait' }
+  const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' }
+  const NEXT_LABEL  = { todo: '▶ Démarrer', doing: '✓ Terminer', done: '↺ Rouvrir' }
+
+  let db = null
+  let tasks = []
+  let currentFilter = 'Tous'
+  let configured = false
+
+  function badgeClass(name) {
+    const map = { Laurent: 'badge-laurent', Nathalie: 'badge-nathalie', Sabrina: 'badge-sabrina', Rahman: 'badge-rahman' }
+    return map[name] || 'badge-laurent'
+  }
+
+  function initSupabase() {
+    if (SUPABASE_URL === 'COLLER_URL_ICI') return false
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+    return true
+  }
+
+  async function loadTasks() {
+    if (!db) return
+    const { data, error } = await db.from('tasks').select('*').order('created_at', { ascending: false })
+    if (error) { console.error(error); return }
+    tasks = data
+    render()
+  }
+
+  async function addTask() {
+    const input = document.getElementById('task-input')
+    const title = input.value.trim()
+    if (!title) return
+
+    const assignee = document.getElementById('assignee-select').value
+
+    if (!db) {
+      tasks.unshift({ id: Date.now(), title, assignee, status: 'todo', created_at: new Date().toISOString() })
+      input.value = ''
+      render()
+      return
+    }
+
+    const { data, error } = await db.from('tasks').insert([{ title, assignee, status: 'todo' }]).select()
+    if (error) { console.error(error); return }
+    tasks.unshift(data[0])
+    input.value = ''
+    render()
+  }
+
+  async function moveTask(id, newStatus) {
+    tasks = tasks.map(t => t.id === id ? { ...t, status: newStatus } : t)
+    render()
+    if (!db) return
+    await db.from('tasks').update({ status: newStatus }).eq('id', id)
+  }
+
+  async function deleteTask(id) {
+    tasks = tasks.filter(t => t.id !== id)
+    render()
+    if (!db) return
+    await db.from('tasks').delete().eq('id', id)
+  }
+
+  function setFilter(name) {
+    currentFilter = name
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent === name)
+    })
+    render()
+  }
+
+  function render() {
+    const filtered = currentFilter === 'Tous' ? tasks : tasks.filter(t => t.assignee === currentFilter)
+
+    STATUSES.forEach(status => {
+      const col = document.getElementById('col-' + status)
+      const subset = filtered.filter(t => t.status === status)
+      document.getElementById('count-' + status).textContent = subset.length
+
+      if (subset.length === 0) {
+        col.innerHTML = '<div class="empty">Aucune tâche</div>'
+        return
+      }
+
+      col.innerHTML = subset.map(t => `
+        <div class="task-card" id="task-${t.id}">
+          <div class="task-title">${escHtml(t.title)}</div>
+          <div class="task-meta">
+            <span class="assignee-badge ${badgeClass(t.assignee)}">${escHtml(t.assignee)}</span>
+            <div class="task-actions">
+              <button class="btn-move" onclick="moveTask(${t.id}, '${NEXT_STATUS[status]}')">${NEXT_LABEL[status]}</button>
+              <button class="btn-delete" onclick="deleteTask(${t.id})" title="Supprimer">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('')
+    })
+
+    const total = filtered.length
+    document.getElementById('task-count').textContent = total + ' tâche' + (total > 1 ? 's' : '')
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+  }
+
+  // Entrée clavier pour ajouter
+  document.getElementById('task-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTask()
+  })
+
+  // Init — on attend que la page soit chargée
+  window.addEventListener('load', function() {
+    try {
+      configured = initSupabase()
+    } catch(e) {
+      configured = false
+    }
+
+    if (configured) {
+      document.getElementById('config-banner').style.display = 'none'
+      loadTasks()
+      // Sync temps réel
+      db.channel('tasks-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks())
+        .subscribe()
+    } else {
+      // Mode démo
+      tasks = [
+        { id: 1, title: 'Appeler client Dupont pour renouvellement', assignee: 'Laurent', status: 'todo' },
+        { id: 2, title: 'Préparer devis assurance habitation', assignee: 'Nathalie', status: 'doing' },
+        { id: 3, title: 'Envoyer contrat signé', assignee: 'Sabrina', status: 'done' },
+        { id: 4, title: 'Relance Rahman - dossier auto', assignee: 'Rahman', status: 'todo' },
+      ]
+      render()
+    }
+  })
+</script>
+</body>
+</html>
