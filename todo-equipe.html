@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tâches Équipe</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100vh; }
+
+    /* ── MODAL IDENTITÉ ── */
+    .identity-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .identity-box {
+      background: #fff; border-radius: 16px; padding: 32px; width: 340px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.2);
+    }
+    .identity-box h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .identity-box p { font-size: 14px; color: #888; margin-bottom: 20px; }
+    .identity-list { display: flex; flex-direction: column; gap: 8px; }
+    .identity-btn {
+      padding: 12px 18px; border-radius: 10px; border: 2px solid #e5e5e5;
+      background: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+      text-align: left; transition: all .15s;
+    }
+    .identity-btn:hover { border-color: #6366f1; color: #6366f1; background: #f5f3ff; }
+
+    /* ── HEADER ── */
+    header {
+      background: #fff; border-bottom: 1px solid #e5e5e5; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    header h1 { font-size: 18px; font-weight: 700; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .current-user {
+      font-size: 13px; font-weight: 600; padding: 5px 12px;
+      border-radius: 20px; cursor: pointer; border: 2px solid transparent;
+    }
+    .current-user:hover { border-color: currentColor; }
+    #task-count { font-size: 13px; color: #888; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+
+    /* ── ADD FORM ── */
+    .add-form { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .add-form h2 { font-size: 12px; font-weight: 700; margin-bottom: 10px; color: #888; text-transform: uppercase; letter-spacing: .6px; }
+    .form-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .form-row input[type="text"] {
+      flex: 1; min-width: 200px; padding: 10px 14px;
+      border: 1.5px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none;
+    }
+    .form-row input[type="text"]:focus { border-color: #6366f1; }
+    .form-row select {
+      padding: 10px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+      font-size: 14px; background: #fff; outline: none; cursor: pointer;
+    }
+    .btn-add {
+      padding: 10px 20px; background: #6366f1; color: #fff; border: none;
+      border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .btn-add:hover { background: #4f51d8; }
+
+    /* ── FILTERS ── */
+    .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .filter-btn {
+      padding: 6px 14px; border-radius: 20px; border: 1.5px solid #e0e0e0;
+      background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; color: #555;
+    }
+    .filter-btn:hover { border-color: #6366f1; color: #6366f1; }
+    .filter-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+    .snooze-toggle {
+      margin-left: auto; font-size: 12px; color: #888; cursor: pointer;
+      padding: 6px 12px; border-radius: 20px; border: 1.5px dashed #d0d0d0;
+      background: transparent;
+    }
+    .snooze-toggle:hover { border-color: #f59e0b; color: #f59e0b; }
+    .snooze-toggle.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; border-style: solid; }
+
+    /* ── BOARD ── */
+    .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 640px) { .board { grid-template-columns: 1fr; } }
+    .column { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .column-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .column-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+    .col-todo .column-title  { color: #6b7280; }
+    .col-doing .column-title { color: #f59e0b; }
+    .col-done .column-title  { color: #10b981; }
+    .col-count { font-size: 12px; background: #f3f4f6; border-radius: 10px; padding: 2px 8px; font-weight: 600; color: #6b7280; }
+
+    /* ── TASK CARD ── */
+    .task-card {
+      border: 1.5px solid #f0f0f0; border-radius: 8px; padding: 10px 12px;
+      margin-bottom: 8px; transition: border-color .15s, box-shadow .15s;
+    }
+    .task-card:hover { border-color: #d0d0d0; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .task-title {
+      font-size: 14px; font-weight: 500; margin-bottom: 6px; line-height: 1.4;
+      cursor: pointer; color: #1a1a1a;
+    }
+    .task-title:hover { color: #6366f1; }
+    .col-done .task-title { text-decoration: line-through; color: #9ca3af; }
+    .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .assignee-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; }
+    .badge-laurent  { background: #ede9fe; color: #6d28d9; }
+    .badge-nathalie { background: #fce7f3; color: #be185d; }
+    .badge-sabrina  { background: #d1fae5; color: #065f46; }
+    .badge-rahman   { background: #fef3c7; color: #92400e; }
+    .task-date { font-size: 11px; color: #9ca3af; }
+    .task-actions { display: flex; gap: 4px; margin-left: auto; }
+    .btn-move {
+      font-size: 11px; padding: 3px 8px; border-radius: 6px;
+      border: 1.5px solid #e0e0e0; background: #fff; cursor: pointer; color: #555;
+    }
+    .btn-move:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-snooze {
+      font-size: 13px; padding: 2px 6px; border-radius: 6px; border: none;
+      background: transparent; cursor: pointer; color: #d1d5db;
+    }
+    .btn-snooze:hover { color: #f59e0b; }
+    .btn-delete {
+      font-size: 13px; padding: 2px 6px; border-radius: 6px; border: none;
+      background: transparent; cursor: pointer; color: #d1d5db;
+    }
+    .btn-delete:hover { color: #ef4444; }
+    .comment-count { font-size: 11px; color: #9ca3af; cursor: pointer; }
+    .comment-count:hover { color: #6366f1; }
+    .snoozed-badge { font-size: 11px; background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px; }
+
+    /* ── SNOOZE POPUP ── */
+    .snooze-popup {
+      position: absolute; background: #fff; border: 1.5px solid #e0e0e0;
+      border-radius: 10px; padding: 12px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+      min-width: 200px;
+    }
+    .snooze-popup p { font-size: 12px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+    .snooze-option {
+      display: block; width: 100%; text-align: left; padding: 7px 10px;
+      border: none; background: transparent; font-size: 13px; cursor: pointer;
+      border-radius: 6px; color: #1a1a1a;
+    }
+    .snooze-option:hover { background: #f5f3ff; color: #6366f1; }
+    .snooze-custom { display: flex; gap: 6px; margin-top: 8px; border-top: 1px solid #f0f0f0; padding-top: 8px; }
+    .snooze-custom input { flex: 1; padding: 6px 8px; border: 1.5px solid #e0e0e0; border-radius: 6px; font-size: 12px; outline: none; }
+    .snooze-custom button { padding: 6px 10px; background: #6366f1; color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
+
+    /* ── EMPTY STATE ── */
+    .empty { text-align: center; color: #d1d5db; font-size: 13px; padding: 20px 0; }
+
+    /* ── SIDE PANEL ── */
+    .panel-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 500;
+      display: none;
+    }
+    .panel-overlay.open { display: block; }
+    .side-panel {
+      position: fixed; top: 0; right: -480px; width: 460px; height: 100vh;
+      background: #fff; box-shadow: -4px 0 24px rgba(0,0,0,.12);
+      z-index: 501; transition: right .25s ease; display: flex; flex-direction: column;
+    }
+    .side-panel.open { right: 0; }
+    .panel-header {
+      padding: 20px 20px 16px; border-bottom: 1px solid #f0f0f0;
+      display: flex; align-items: flex-start; gap: 12px;
+    }
+    .panel-header h3 { flex: 1; font-size: 16px; font-weight: 600; line-height: 1.4; }
+    .panel-close {
+      font-size: 20px; background: none; border: none; cursor: pointer;
+      color: #9ca3af; line-height: 1; padding: 2px;
+    }
+    .panel-close:hover { color: #1a1a1a; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+    /* Tabs dans le panel */
+    .panel-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #f0f0f0; }
+    .panel-tab {
+      padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+      border: none; background: transparent; color: #888; border-bottom: 2px solid transparent; margin-bottom: -2px;
+    }
+    .panel-tab.active { color: #6366f1; border-bottom-color: #6366f1; }
+
+    /* Commentaires */
+    .comment-item { margin-bottom: 14px; }
+    .comment-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .comment-author { font-size: 12px; font-weight: 700; }
+    .comment-time { font-size: 11px; color: #9ca3af; }
+    .comment-text { font-size: 13px; line-height: 1.5; color: #374151; background: #f9fafb; padding: 8px 10px; border-radius: 8px; }
+    .add-comment { margin-top: 16px; border-top: 1px solid #f0f0f0; padding-top: 14px; }
+    .add-comment textarea {
+      width: 100%; padding: 10px 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+      font-size: 13px; resize: none; height: 72px; outline: none; font-family: inherit;
+    }
+    .add-comment textarea:focus { border-color: #6366f1; }
+    .add-comment button {
+      margin-top: 8px; padding: 8px 16px; background: #6366f1; color: #fff;
+      border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+
+    /* Journal */
+    .log-item { display: flex; gap: 10px; margin-bottom: 12px; font-size: 13px; }
+    .log-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .log-text { color: #374151; line-height: 1.5; }
+    .log-text strong { font-weight: 600; }
+    .log-time { font-size: 11px; color: #9ca3af; display: block; margin-top: 2px; }
+
+    /* Task info */
+    .task-info-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 13px; color: #6b7280; }
+    .task-info-row strong { color: #1a1a1a; }
+  </style>
+</head>
+<body>
+
+<!-- Modal identité -->
+<div class="identity-overlay" id="identity-overlay">
+  <div class="identity-box">
+    <h2>Qui es-tu ?</h2>
+    <p>Ton choix sera mémorisé sur cet appareil.</p>
+    <div class="identity-list">
+      <button class="identity-btn" onclick="setIdentity('Laurent')">Laurent Vacher</button>
+      <button class="identity-btn" onclick="setIdentity('Nathalie')">Nathalie Brie</button>
+      <button class="identity-btn" onclick="setIdentity('Sabrina')">Sabrina Théolade</button>
+      <button class="identity-btn" onclick="setIdentity('Rahman')">Rahman Hussain</button>
+    </div>
+  </div>
+</div>
+
+<!-- Panel overlay -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+
+<!-- Side panel -->
+<div class="side-panel" id="side-panel">
+  <div class="panel-header">
+    <h3 id="panel-title">—</h3>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="task-info-row" id="panel-info"></div>
+    <div class="panel-tabs">
+      <button class="panel-tab active" onclick="switchTab('comments')">Commentaires</button>
+      <button class="panel-tab" onclick="switchTab('logs')">Journal</button>
+    </div>
+    <div id="tab-comments">
+      <div id="comments-list"></div>
+      <div class="add-comment">
+        <textarea id="comment-input" placeholder="Ajouter un commentaire…"></textarea>
+        <button onclick="addComment()">Envoyer</button>
+      </div>
+    </div>
+    <div id="tab-logs" style="display:none">
+      <div id="logs-list"></div>
+    </div>
+  </div>
+</div>
+
+<header>
+  <h1>Tâches Équipe</h1>
+  <div class="header-right">
+    <span id="task-count">—</span>
+    <span class="current-user" id="current-user-badge" onclick="resetIdentity()"></span>
+  </div>
+</header>
+
+<div class="container">
+  <div class="add-form">
+    <h2>Nouvelle tâche</h2>
+    <div class="form-row">
+      <input type="text" id="task-input" placeholder="Description de la tâche…" />
+      <select id="assignee-select">
+        <option value="Laurent">Laurent</option>
+        <option value="Nathalie">Nathalie</option>
+        <option value="Sabrina">Sabrina</option>
+        <option value="Rahman">Rahman</option>
+      </select>
+      <button class="btn-add" onclick="addTask()">+ Ajouter</button>
+    </div>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn active" onclick="setFilter('Tous')">Tous</button>
+    <button class="filter-btn" onclick="setFilter('Laurent')">Laurent</button>
+    <button class="filter-btn" onclick="setFilter('Nathalie')">Nathalie</button>
+    <button class="filter-btn" onclick="setFilter('Sabrina')">Sabrina</button>
+    <button class="filter-btn" onclick="setFilter('Rahman')">Rahman</button>
+    <button class="snooze-toggle" id="snooze-toggle" onclick="toggleSnoozedView()">⏰ Snoozées</button>
+  </div>
+
+  <div class="board">
+    <div class="column col-todo">
+      <div class="column-header">
+        <span class="column-title">À faire</span>
+        <span class="col-count" id="count-todo">0</span>
+      </div>
+      <div id="col-todo"></div>
+    </div>
+    <div class="column col-doing">
+      <div class="column-header">
+        <span class="column-title">En cours</span>
+        <span class="col-count" id="count-doing">0</span>
+      </div>
+      <div id="col-doing"></div>
+    </div>
+    <div class="column col-done">
+      <div class="column-header">
+        <span class="column-title">Fait ✓</span>
+        <span class="col-count" id="count-done">0</span>
+      </div>
+      <div id="col-done"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Snooze popup (global) -->
+<div class="snooze-popup" id="snooze-popup" style="display:none; position:fixed;">
+  <p>Reporter à…</p>
+  <button class="snooze-option" onclick="applySnoozeHours(1)">Dans 1h</button>
+  <button class="snooze-option" onclick="applySnoozeToday(14)">Aujourd'hui à 14h</button>
+  <button class="snooze-option" onclick="applySnoozeToday(18)">Aujourd'hui à 18h</button>
+  <button class="snooze-option" onclick="applySnooze(1)">Demain matin (8h)</button>
+  <button class="snooze-option" onclick="applySnooze(3)">Dans 3 jours</button>
+  <button class="snooze-option" onclick="applySnooze(7)">La semaine prochaine</button>
+  <div class="snooze-custom">
+    <input type="date" id="snooze-date-input" />
+    <input type="time" id="snooze-time-input" value="08:00" style="width:80px" />
+    <button onclick="applySnoozeCustom()">OK</button>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://vielqmjcextlynqvssoo.supabase.co'
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpZWxxbWpjZXh0bHlucXZzc29vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDQwMzAsImV4cCI6MjA5NjA4MDAzMH0.arNbiVgnJ9OHZOr0GjWFUQrXazKCnK8vA252_Sa2yQk'
+
+  const STATUSES = ['todo', 'doing', 'done']
+  const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' }
+  const NEXT_LABEL  = { todo: '▶ Démarrer', doing: '✓ Terminer', done: '↺ Rouvrir' }
+  const STATUS_FR   = { todo: 'À faire', doing: 'En cours', done: 'Fait' }
+
+  let db = null
+  let tasks = []
+  let currentFilter = 'Tous'
+  let showSnoozed = false
+  let currentUser = null
+  let activePanelTaskId = null
+  let snoozeTargetId = null
+  let activeTab = 'comments'
+
+  // ── IDENTITÉ ──
+  function setIdentity(name) {
+    localStorage.setItem('todo-user', name)
+    currentUser = name
+    document.getElementById('identity-overlay').style.display = 'none'
+    renderUserBadge()
+  }
+
+  function resetIdentity() {
+    if (!confirm('Changer d\'utilisateur ?')) return
+    localStorage.removeItem('todo-user')
+    document.getElementById('identity-overlay').style.display = 'flex'
+  }
+
+  function renderUserBadge() {
+    const badge = document.getElementById('current-user-badge')
+    badge.textContent = currentUser
+    badge.className = 'current-user assignee-badge ' + badgeClass(currentUser)
+  }
+
+  function badgeClass(name) {
+    const map = { Laurent: 'badge-laurent', Nathalie: 'badge-nathalie', Sabrina: 'badge-sabrina', Rahman: 'badge-rahman' }
+    return map[name] || 'badge-laurent'
+  }
+
+  // ── SUPABASE ──
+  function initDb() {
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+  }
+
+  async function loadTasks() {
+    const { data, error } = await db.from('tasks').select('*').order('created_at', { ascending: false })
+    if (error) { console.error(error); return }
+    tasks = data
+    render()
+  }
+
+  // ── AJOUTER TÂCHE ──
+  async function addTask() {
+    const input = document.getElementById('task-input')
+    const title = input.value.trim()
+    if (!title || !currentUser) return
+    const assignee = document.getElementById('assignee-select').value
+
+    const { data, error } = await db.from('tasks')
+      .insert([{ title, assignee, status: 'todo', created_by: currentUser }])
+      .select()
+    if (error) { console.error(error); return }
+
+    await db.from('logs').insert([{
+      task_id: data[0].id, task_title: title,
+      action: 'created', actor: currentUser,
+      detail: 'Tâche créée, assignée à ' + assignee
+    }])
+
+    tasks.unshift(data[0])
+    input.value = ''
+    render()
+  }
+
+  // ── DÉPLACER TÂCHE ──
+  async function moveTask(id, newStatus) {
+    const task = tasks.find(t => t.id === id)
+    tasks = tasks.map(t => t.id === id ? { ...t, status: newStatus } : t)
+    render()
+    await db.from('tasks').update({ status: newStatus }).eq('id', id)
+    await db.from('logs').insert([{
+      task_id: id, task_title: task?.title,
+      action: 'status', actor: currentUser,
+      detail: STATUS_FR[newStatus]
+    }])
+  }
+
+  // ── SUPPRIMER TÂCHE ──
+  async function deleteTask(id) {
+    const task = tasks.find(t => t.id === id)
+    tasks = tasks.filter(t => t.id !== id)
+    render()
+    await db.from('logs').insert([{
+      task_id: id, task_title: task?.title,
+      action: 'deleted', actor: currentUser,
+      detail: 'Supprimée par ' + currentUser
+    }])
+    await db.from('tasks').delete().eq('id', id)
+  }
+
+  // ── SNOOZE ──
+  function showSnoozeMenu(id, el) {
+    snoozeTargetId = id
+    const rect = el.getBoundingClientRect()
+    const popup = document.getElementById('snooze-popup')
+    popup.style.display = 'block'
+    popup.style.top = (rect.bottom + 4) + 'px'
+    popup.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px'
+  }
+
+  async function applySnoozeHours(hours) {
+    const until = new Date()
+    until.setHours(until.getHours() + hours)
+    await doSnooze(snoozeTargetId, until.toISOString())
+    closeSnoozePopup()
+  }
+
+  async function applySnoozeToday(hour) {
+    const until = new Date()
+    until.setHours(hour, 0, 0, 0)
+    await doSnooze(snoozeTargetId, until.toISOString())
+    closeSnoozePopup()
+  }
+
+  async function applySnooze(days) {
+    const until = new Date()
+    until.setDate(until.getDate() + days)
+    until.setHours(8, 0, 0, 0)
+    await doSnooze(snoozeTargetId, until.toISOString())
+    closeSnoozePopup()
+  }
+
+  async function applySnoozeCustom() {
+    const val = document.getElementById('snooze-date-input').value
+    const time = document.getElementById('snooze-time-input').value || '08:00'
+    if (!val) return
+    await doSnooze(snoozeTargetId, new Date(val + 'T' + time + ':00').toISOString())
+    closeSnoozePopup()
+  }
+
+  async function doSnooze(id, until) {
+    const task = tasks.find(t => t.id === id)
+    tasks = tasks.map(t => t.id === id ? { ...t, snoozed_until: until } : t)
+    render()
+    await db.from('tasks').update({ snoozed_until: until }).eq('id', id)
+    await db.from('logs').insert([{
+      task_id: id, task_title: task?.title,
+      action: 'snoozed', actor: currentUser,
+      detail: 'Snoozée jusqu\'au ' + formatDate(until)
+    }])
+  }
+
+  async function unsnooze(id) {
+    tasks = tasks.map(t => t.id === id ? { ...t, snoozed_until: null } : t)
+    render()
+    await db.from('tasks').update({ snoozed_until: null }).eq('id', id)
+  }
+
+  function closeSnoozePopup() {
+    document.getElementById('snooze-popup').style.display = 'none'
+    snoozeTargetId = null
+  }
+
+  document.addEventListener('click', e => {
+    const popup = document.getElementById('snooze-popup')
+    if (popup.style.display !== 'none' && !popup.contains(e.target) && !e.target.classList.contains('btn-snooze')) {
+      closeSnoozePopup()
+    }
+  })
+
+  // ── FILTRES ──
+  function setFilter(name) {
+    currentFilter = name
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.textContent === name))
+    render()
+  }
+
+  function toggleSnoozedView() {
+    showSnoozed = !showSnoozed
+    document.getElementById('snooze-toggle').classList.toggle('active', showSnoozed)
+    render()
+  }
+
+  // ── SIDE PANEL ──
+  function openPanel(id) {
+    activePanelTaskId = id
+    const task = tasks.find(t => t.id === id)
+    document.getElementById('panel-title').textContent = task?.title || '—'
+
+    const info = document.getElementById('panel-info')
+    info.innerHTML = `
+      <span class="assignee-badge ${badgeClass(task.assignee)}">${task.assignee}</span>
+      <span>Créée par <strong>${task.created_by || '?'}</strong></span>
+      <span class="task-date">${formatDate(task.created_at)}</span>
+    `
+
+    switchTab('comments')
+    document.getElementById('panel-overlay').classList.add('open')
+    document.getElementById('side-panel').classList.add('open')
+    loadComments(id)
+  }
+
+  function closePanel() {
+    activePanelTaskId = null
+    document.getElementById('panel-overlay').classList.remove('open')
+    document.getElementById('side-panel').classList.remove('open')
+  }
+
+  function switchTab(tab) {
+    activeTab = tab
+    document.getElementById('tab-comments').style.display = tab === 'comments' ? 'block' : 'none'
+    document.getElementById('tab-logs').style.display = tab === 'logs' ? 'block' : 'none'
+    document.querySelectorAll('.panel-tab').forEach((b, i) => {
+      b.classList.toggle('active', (i === 0 && tab === 'comments') || (i === 1 && tab === 'logs'))
+    })
+    if (tab === 'logs') loadLogs(activePanelTaskId)
+  }
+
+  // ── COMMENTAIRES ──
+  async function loadComments(taskId) {
+    const { data } = await db.from('comments').select('*').eq('task_id', taskId).order('created_at')
+    const list = document.getElementById('comments-list')
+    if (!data || data.length === 0) {
+      list.innerHTML = '<div class="empty">Aucun commentaire</div>'
+      return
+    }
+    list.innerHTML = data.map(c => `
+      <div class="comment-item">
+        <div class="comment-header">
+          <span class="comment-author assignee-badge ${badgeClass(c.author)}">${escHtml(c.author)}</span>
+          <span class="comment-time">${formatDate(c.created_at, true)}</span>
+        </div>
+        <div class="comment-text">${escHtml(c.content)}</div>
+      </div>
+    `).join('')
+    updateCommentCount(taskId, data.length)
+  }
+
+  async function addComment() {
+    const input = document.getElementById('comment-input')
+    const content = input.value.trim()
+    if (!content || !activePanelTaskId) return
+    await db.from('comments').insert([{ task_id: activePanelTaskId, author: currentUser, content }])
+    input.value = ''
+    loadComments(activePanelTaskId)
+  }
+
+  document.getElementById('comment-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addComment()
+  })
+
+  function updateCommentCount(taskId, count) {
+    const el = document.querySelector(`[data-comment-count="${taskId}"]`)
+    if (el) el.textContent = count > 0 ? '💬 ' + count : ''
+  }
+
+  // ── JOURNAL ──
+  async function loadLogs(taskId) {
+    const { data } = await db.from('logs').select('*').eq('task_id', taskId).order('created_at', { ascending: false })
+    const list = document.getElementById('logs-list')
+    if (!data || data.length === 0) { list.innerHTML = '<div class="empty">Aucune action enregistrée</div>'; return }
+    const icons = { created: '✨', status: '→', deleted: '🗑', snoozed: '⏰', comment: '💬' }
+    list.innerHTML = data.map(l => `
+      <div class="log-item">
+        <span class="log-icon">${icons[l.action] || '•'}</span>
+        <div class="log-text">
+          <strong>${escHtml(l.actor)}</strong> — ${escHtml(l.detail || l.action)}
+          <span class="log-time">${formatDate(l.created_at)}</span>
+        </div>
+      </div>
+    `).join('')
+  }
+
+  // ── RENDU ──
+  function render() {
+    const now = new Date()
+    let filtered = tasks.filter(t => {
+      if (showSnoozed) return t.snoozed_until && new Date(t.snoozed_until) > now
+      return !t.snoozed_until || new Date(t.snoozed_until) <= now
+    })
+    if (currentFilter !== 'Tous') filtered = filtered.filter(t => t.assignee === currentFilter)
+
+    STATUSES.forEach(status => {
+      const col = document.getElementById('col-' + status)
+      const subset = filtered.filter(t => t.status === status)
+      document.getElementById('count-' + status).textContent = subset.length
+
+      if (subset.length === 0) { col.innerHTML = '<div class="empty">Aucune tâche</div>'; return }
+
+      col.innerHTML = subset.map(t => `
+        <div class="task-card">
+          <div class="task-title" onclick="openPanel(${t.id})">${escHtml(t.title)}</div>
+          <div class="task-meta">
+            <span class="assignee-badge ${badgeClass(t.assignee)}">${escHtml(t.assignee)}</span>
+            ${t.snoozed_until ? `<span class="snoozed-badge">⏰ ${formatDate(t.snoozed_until)}</span>` : ''}
+            <span class="comment-count" data-comment-count="${t.id}" onclick="openPanel(${t.id})"></span>
+            <div class="task-actions">
+              ${!showSnoozed ? `<button class="btn-move" onclick="moveTask(${t.id}, '${NEXT_STATUS[status]}')">${NEXT_LABEL[status]}</button>` : `<button class="btn-move" onclick="unsnooze(${t.id})">↺ Réactiver</button>`}
+              <button class="btn-snooze" onclick="showSnoozeMenu(${t.id}, this)" title="Snooze">⏰</button>
+              <button class="btn-delete" onclick="deleteTask(${t.id})" title="Supprimer">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('')
+    })
+
+    const total = filtered.length
+    document.getElementById('task-count').textContent = total + ' tâche' + (total > 1 ? 's' : '')
+
+    // Charger les compteurs de commentaires
+    loadAllCommentCounts(filtered.map(t => t.id))
+  }
+
+  async function loadAllCommentCounts(ids) {
+    if (!ids.length) return
+    const { data } = await db.from('comments').select('task_id').in('task_id', ids)
+    if (!data) return
+    const counts = {}
+    data.forEach(c => counts[c.task_id] = (counts[c.task_id] || 0) + 1)
+    Object.entries(counts).forEach(([id, count]) => {
+      const el = document.querySelector(`[data-comment-count="${id}"]`)
+      if (el) el.textContent = '💬 ' + count
+    })
+  }
+
+  // ── UTILITAIRES ──
+  function formatDate(iso, full = false) {
+    if (!iso) return ''
+    const d = new Date(iso)
+    const now = new Date()
+    const diff = now - d
+    if (full) {
+      const sameYear = d.getFullYear() === now.getFullYear()
+      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: sameYear ? undefined : 'numeric' })
+        + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    }
+    if (diff < 60000) return 'à l\'instant'
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' min'
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h'
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  }
+
+  function escHtml(str) {
+    if (!str) return ''
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+  }
+
+  document.getElementById('task-input').addEventListener('keydown', e => { if (e.key === 'Enter') addTask() })
+
+  // ── INIT ──
+  window.addEventListener('load', function() {
+    initDb()
+
+    currentUser = localStorage.getItem('todo-user')
+    if (currentUser) {
+      document.getElementById('identity-overlay').style.display = 'none'
+      renderUserBadge()
+    }
+
+    loadTasks()
+
+    db.channel('tasks-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks())
+      .subscribe()
+  })
+</script>
+</body>
+</html>
